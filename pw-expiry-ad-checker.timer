@@ -1,0 +1,10 @@
+[Unit]
+Description=Execute pw check mornings and afternoon
+
+[Timer]
+#OnCalendar=Mon..Fri *-*-* 09,15:27:00
+OnCalendar=*-*-* 09,15:27:00
+#Unit=pw-expiry-ad-checker.service
+
+[Install]
+WantedBy=default.target

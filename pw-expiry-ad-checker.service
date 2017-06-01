@@ -1,0 +1,9 @@
+[Unit]
+Description=Password Active Directory espiry checker
+
+[Service]
+ExecStart=/home/carl/Code/pw-expiry-ad-checker/pw-expiry-ad-checker
+
+[Install]
+WantedBy=default.target
+

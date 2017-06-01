@@ -12,17 +12,32 @@ gi.require_version('Notify', '0.7')
 from gi.repository import Notify # gnome 3 notifications
 from ldap3 import Server, Connection, ALL
 
+DEFAULTCONFIG = os.path.expanduser("~/.pw-expiry-ad-checker.conf")
 WARNDEFAULT = 10 # warn if pw expires in less than these many days
 PWFILE = os.path.expanduser("~/.cifscred")
 USAGE = '''%prog is meant to be used on *nix machines and for those who need notifications before the AD account expires
+
 example usage:
-python3 % -b email.address@domain.com -s dc01.ad.domain.com -S 'DC=ad,DC=domain,DC=com' -d -u johndoe1
-'''
+
+python3 % -b email.address@domain.com -s dc01.ad.domain.com -S 'DC=ad,DC=domain,DC=com' -d -u johndoe1 -p secretpassword
+
+!! preferrably use the config file for options as to not give away secrets in
+the process tree. Also do not store secrets on an unencrypted disk '''
 DEBUG = False
 
 def debug(strings):
     if DEBUG:
         print(strings)
+
+
+def get_fileconfig(options):
+    try:
+        with open(options.config, "r") as cfg:
+            for line in cfg.readlines():
+                setattr( options,line.split('=',1)[0], line.split('=',1)[1].strip() )
+    except:
+        print( "failed to get config from file: {0}".format(options.config))
+    return options
 
 def getOptions():
     opts = optparse.OptionParser(usage=USAGE, prog=sys.argv[0], description='Warn n days before password expire in ad, use gnome notification for this', version='0.1')
@@ -30,32 +45,29 @@ def getOptions():
     opts.add_option('--server', '-s', dest='server', help='Name of server to connect to (fqdn)' )
     opts.add_option('--search', '-S', dest='search', help='Search base RDN ("DC=ad,DC=company,DC=com")' )
     opts.add_option('--uid', '-u', dest='uid', help='uid (user id in ad i.e joco02 also sAMAccountName in AD)' )
-    opts.add_option('--credfile', '-c', dest='credentials', default=PWFILE, help='path to credentials file (contents should be password=changeme)' )
+    opts.add_option('--password', '-p', dest='password', help='ad password' )
+    opts.add_option('--config-file', '-c', dest='config', default=DEFAULTCONFIG, help='path to credentials file (contents should be option=value)' )
     opts.add_option('--warn', '-w', dest='warn', default=WARNDEFAULT, help='number of days to warn before password expires' )
     opts.add_option('--debug', '-d', dest='debug', action="store_true", help='Enable debugging')
     options, arguments = opts.parse_args()
+
+    options = get_fileconfig(options)
+    options.warn = int(options.warn)
 
     if not options.bind or not options.server or not options.search or not options.uid:
         opts.error('Missing options needed to operate properly')
     if options.debug:
         global DEBUG
         DEBUG = True
+        print( options )
     return options
 
-
-def get_pwd(options):
-    try:
-        with open(options.credentials, "r") as pwf:
-            pw = pwf.readline().split("=")[1].strip()
-    except:
-        print( "failed to get password from file: {0}".format(options.credentials))
-    return pw
 
 
 def serverConnect(options):
     try:
         server = Server(options.server, get_info=ALL)
-        conn = Connection(server, options.bind, options.pwd, auto_bind=True)
+        conn = Connection(server, options.bind, options.password, auto_bind=True)
         debug(conn.extend.standard.who_am_i())
     except:
         print("Failed to connect to server {0} : {1}".format(options.server, sys.exc_info()[1]) )
@@ -63,7 +75,7 @@ def serverConnect(options):
     return conn
 
 def searchDIT(conn, options):
-    conn.search(options.search, '(&(objectclass=person)(uid=caha02))', attributes=['cn', 'givenName', 'accountExpires'] )
+    conn.search(options.search, '(&(objectclass=person)(uid=%s))' % options.uid , attributes=['cn', 'givenName', 'accountExpires'] )
     debug(conn.entries)
     return conn.entries[0]
 
@@ -100,7 +112,7 @@ def expireCheck(pwdLastSet, maxPwdAge, options):
 
 def main():
     options = getOptions()
-    options.pwd = get_pwd(options)
+    #options.pwd = get_pwd(options)
     conn = serverConnect(options)
     answer = searchDIT(conn, options)
     PwLastSet = getPwLastSet(conn, options)

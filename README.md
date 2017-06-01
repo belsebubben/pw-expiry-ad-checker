@@ -4,20 +4,29 @@ to monitor when password for you **AD account** expires
 meant to be used on cli or with systemd time / crond
 
 ### TODO
-- [ ] Makefile
-- [ ] Systemd time unit / crond entry
+- [x] Makefile
+- [x] Systemd time unit / crond entry
+
+## Dependencies
+python 3.5+ 
+python3-gobject-base	https://wiki.gnome.org/Projects/PyGObject
+python3-ldap3		https://github.com/cannatag/ldap3
 
 ## Install on linux
-1. install python 3
-2. install dependencies :) 
-3. create an password (credentials file, we dont want to provide this on the command line)
-3. run
+1. install dependencies
+2. create an password (credentials file, we dont want to provide this on the command line)
+3. create config file
+
 
 ## Usage
-Usage: pw-expiry-ad-checker is meant to be used on *nix machines and for those who need notifications before the AD account expires
-example usage:
-python3 % -b email.address@domain.com -s dc01.ad.domain.com -S 'DC=ad,DC=domain,DC=com' -d -u johndoe1
+Usage: ./pw-expiry-ad-checker is meant to be used on *nix machines and for those who need notifications before the AD account expires
 
+example usage:
+
+python3 % -b email.address@domain.com -s dc01.ad.domain.com -S 'DC=ad,DC=domain,DC=com' -d -u johndoe1 -p secretpassword
+
+!! preferrably use the config file for options as to not give away secrets in
+the process tree. Also do not store secrets on an unencrypted disk
 
 Warn n days before password expire in ad, use gnome notification for this
 
@@ -31,9 +40,10 @@ Options:
                         Search base RDN ("DC=ad,DC=company,DC=com")
   -u UID, --uid=UID     uid (user id in ad i.e joco02 also sAMAccountName in
                         AD)
-  -c CREDENTIALS, --credfile=CREDENTIALS
+  -p PASSWORD, --password=PASSWORD
+                        ad password
+  -c CONFIG, --config-file=CONFIG
                         path to credentials file (contents should be
-                        password=changeme)
+                        option=value)
   -w WARN, --warn=WARN  number of days to warn before password expires
   -d, --debug           Enable debugging
-
