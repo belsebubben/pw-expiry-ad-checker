@@ -8,15 +8,16 @@ meant to be used on cli or with systemd time / crond
 - [x] Systemd time unit / crond entry
 
 ## Dependencies
-python 3.5+ 
-python3-gobject-base	https://wiki.gnome.org/Projects/PyGObject
-python3-ldap3		https://github.com/cannatag/ldap3
+1. python 3.5+ 
+2. python3-gobject-base	https://wiki.gnome.org/Projects/PyGObject
+3. python3-ldap3		https://github.com/cannatag/ldap3
 
 ## Install on linux
 1. install dependencies
-2. create an password (credentials file, we dont want to provide this on the command line)
-3. create config file
-
+2. create a password (credentials file, we dont want to provide this on the command line)
+3. Edit the ``pw-expiry-ad-checker.conf`` all the needed settings
+4. Edit the ``pw-expiry-ad-checker.timer`` so that it fits your time requirements
+5. make install
 
 ## Usage
 Usage: ./pw-expiry-ad-checker is meant to be used on *nix machines and for those who need notifications before the AD account expires
