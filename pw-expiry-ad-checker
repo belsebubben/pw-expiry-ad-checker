@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
+'''
+%prog is meant to be used on *nix machines and for those who need notifications before the AD account expires
 
+example usage:
+
+python3 % -b email.address@domain.com -s dc01.ad.domain.com -S 'DC=ad,DC=domain,DC=com' -d -u johndoe1 -p secretpassword
+
+!! preferrably use the config file for options as to not give away secrets in
+the process tree. Also do not store secrets on an unencrypted disk
+'''
 import sys
 import os
-import subprocess
-import time
 import datetime
-from datetime import timezone
 import gi
 import optparse
 gi.require_version('Notify', '0.7')
@@ -15,39 +21,42 @@ from ldap3 import Server, Connection, ALL
 DEFAULTCONFIG = os.path.expanduser("~/.pw-expiry-ad-checker.conf")
 WARNDEFAULT = 10 # warn if pw expires in less than these many days
 PWFILE = os.path.expanduser("~/.cifscred")
-USAGE = '''%prog is meant to be used on *nix machines and for those who need notifications before the AD account expires
-
-example usage:
-
-python3 % -b email.address@domain.com -s dc01.ad.domain.com -S 'DC=ad,DC=domain,DC=com' -d -u johndoe1 -p secretpassword
-
-!! preferrably use the config file for options as to not give away secrets in
-the process tree. Also do not store secrets on an unencrypted disk '''
 DEBUG = False
 
 def debug(strings):
+    '''Debug printing'''
     if DEBUG:
         print(strings)
 
 
 def get_fileconfig(options):
+    '''Read file configuration'''
     try:
         with open(options.config, "r") as cfg:
             for line in cfg.readlines():
-                setattr( options,line.split('=',1)[0], line.split('=',1)[1].strip() )
-    except:
-        print( "failed to get config from file: {0}".format(options.config))
+                setattr(options, line.split('=', 1)[0], line.split('=', 1)[1].strip())
+    except Exception:
+        print("failed to get config from file: {0}".format(options.config))
     return options
 
-def getOptions():
-    opts = optparse.OptionParser(usage=USAGE, prog=sys.argv[0], description='Warn n days before password expire in ad, use gnome notification for this', version='0.1')
-    opts.add_option('--bind', '-b', dest='bind', help='Bind dn (authentication) DN or mailaddress (AD)'  )
-    opts.add_option('--server', '-s', dest='server', help='Name of server to connect to (fqdn)' )
-    opts.add_option('--search', '-S', dest='search', help='Search base RDN ("DC=ad,DC=company,DC=com")' )
-    opts.add_option('--uid', '-u', dest='uid', help='uid (user id in ad i.e joco02 also sAMAccountName in AD)' )
-    opts.add_option('--password', '-p', dest='password', help='ad password' )
-    opts.add_option('--config-file', '-c', dest='config', default=DEFAULTCONFIG, help='path to credentials file (contents should be option=value)' )
-    opts.add_option('--warn', '-w', dest='warn', default=WARNDEFAULT, help='number of days to warn before password expires' )
+def get_options():
+    '''Parsing options'''
+    opts = optparse.OptionParser(usage=__doc__, prog=sys.argv[0],\
+            description='Warn n days before password expire in ad, use gnome notification for this', \
+            version='0.1')
+    opts.add_option('--bind', '-b', dest='bind',\
+            help='Bind dn (authentication) DN or mailaddress (AD)')
+    opts.add_option('--server', '-s', dest='server',\
+            help='Name of server to connect to (fqdn)')
+    opts.add_option('--search', '-S', dest='search',\
+            help='Search base RDN ("DC=ad,DC=company,DC=com")')
+    opts.add_option('--uid', '-u', dest='uid',\
+            help='uid (user id in ad i.e joco02 also sAMAccountName in AD)')
+    opts.add_option('--password', '-p', dest='password', help='ad password')
+    opts.add_option('--config-file', '-c', dest='config',\
+            default=DEFAULTCONFIG, help='path to credentials file (contents should be option=value)')
+    opts.add_option('--warn', '-w', dest='warn', default=WARNDEFAULT,\
+            help='number of days to warn before password expires')
     opts.add_option('--debug', '-d', dest='debug', action="store_true", help='Enable debugging')
     options, arguments = opts.parse_args()
 
@@ -59,39 +68,45 @@ def getOptions():
     if options.debug:
         global DEBUG
         DEBUG = True
-        print( options )
+        print(options)
     return options
 
 
 
-def serverConnect(options):
+def server_connect(options):
+    '''Server connection'''
     try:
         server = Server(options.server, get_info=ALL)
         conn = Connection(server, options.bind, options.password, auto_bind=True)
         debug(conn.extend.standard.who_am_i())
-    except:
-        print("Failed to connect to server {0} : {1}".format(options.server, sys.exc_info()[1]) )
+    except Exception:
+        print("Failed to connect to server {0} : {1}".format(options.server, sys.exc_info()[1]))
         sys.exit(2)
     return conn
 
-def searchDIT(conn, options):
-    conn.search(options.search, '(&(objectclass=person)(uid=%s))' % options.uid , attributes=['cn', 'givenName', 'accountExpires'] )
+def search_dit(conn, options):
+    conn.search(options.search, '(&(objectclass=person)(uid=%s))'\
+            % options.uid, attributes=['cn', 'givenName', 'accountExpires'])
     debug(conn.entries)
     return conn.entries[0]
 
-def getMaxPwdAge(conn, options):
-    conn.search(options.search, '(&(name=ad)(dc=ad))', attributes=['maxPwdAge'] )
+def getmax_pwdage(conn, options):
+    '''What is the max age of passwords (policy)'''
+    conn.search(options.search, '(&(name=ad)(dc=ad))', attributes=['maxPwdAge'])
     debug(conn.entries)
-    maxPwdAge = ( - conn.entries[0].maxPwdAge.value / 10000000 ) / 86400 # maxPwdAge is nanoseconds + 86400 seconds in a day
-    return datetime.timedelta( days=int(maxPwdAge) )
+    # maxPwdAge is nanoseconds + 86400 seconds in a day
+    maxPwdAge = (- conn.entries[0].maxPwdAge.value / 10000000) / 86400
+    return datetime.timedelta(days=int(maxPwdAge))
 
-def getPwLastSet(conn, options):
-    conn.search(options.search, '(sAMAccountName=%s)' % options.uid , attributes=['pwdLastSet'] )
+def getpw_lastset(conn, options):
+    '''When the password was last set'''
+    conn.search(options.search, '(sAMAccountName=%s)' % options.uid, attributes=['pwdLastSet'])
     debug(conn.entries)
     return conn.entries[0].pwdLastSet.value
 
-def expireCheck(pwdLastSet, maxPwdAge, options):
+def expire_check(pwdLastSet, maxPwdAge, options):
     '''
+    How long until expire
     below is legacy
     secsafteradepoch = int(pwdlastset) / 10000000
     ad2unix=((1970-1601) * 365 - 3 + round((1970-1601)/4) ) * 86400
@@ -99,25 +114,26 @@ def expireCheck(pwdLastSet, maxPwdAge, options):
     "If the year is the last year of a century, eg. 1700, 1800, 1900, 2000,
     then it is only a leap year if it is exactly divisible by 400.
     Therefore, 1900 wasn't a leap year but 2000 was."'''
-    today = datetime.datetime.now(timezone.utc)
+    today = datetime.datetime.now(datetime.timezone.utc)
     expires = pwdLastSet + maxPwdAge
     daystoexpiry = (expires - today).days
     debug(daystoexpiry)
 
     if daystoexpiry < options.warn:
         Notify.init('pwdexpiry')
-        n = Notify.Notification.new('AD pw expires', '{0} days from now\non {1}'.format(daystoexpiry, ( expires )), "dialog-information")
-        n.show()
-    print( 'AD-pw expire {0} ({1} days)'.format(expires, daystoexpiry) )
+        notif = Notify.Notification.new('AD pw expires', '{0} days from now\non {1}'.format(\
+                daystoexpiry, (expires)), "dialog-information")
+        notif.show()
+    print('AD-pw expire {0} ({1} days)'.format(expires, daystoexpiry))
 
 def main():
-    options = getOptions()
+    options = get_options()
     #options.pwd = get_pwd(options)
-    conn = serverConnect(options)
-    answer = searchDIT(conn, options)
-    PwLastSet = getPwLastSet(conn, options)
-    MaxPwdAge = getMaxPwdAge(conn, options)
-    expireCheck(PwLastSet, MaxPwdAge, options )
+    conn = server_connect(options)
+    answer = search_dit(conn, options)
+    PwLastSet = getpw_lastset(conn, options)
+    MaxPwdAge = getmax_pwdage(conn, options)
+    expire_check(PwLastSet, MaxPwdAge, options)
 
 if __name__ in '__main__':
     main()
